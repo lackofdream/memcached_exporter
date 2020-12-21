@@ -42,6 +42,8 @@ type Exporter struct {
 	up                       *prometheus.Desc
 	uptime                   *prometheus.Desc
 	time                     *prometheus.Desc
+	threads                  *prometheus.Desc
+	flushEnabled             *prometheus.Desc
 	version                  *prometheus.Desc
 	bytesRead                *prometheus.Desc
 	bytesWritten             *prometheus.Desc
@@ -488,6 +490,18 @@ func New(server string, timeout time.Duration, logger log.Logger) *Exporter {
 			[]string{"slab", "command", "status"},
 			nil,
 		),
+		threads: prometheus.NewDesc(
+			prometheus.BuildFQName(Namespace, "", "threads"),
+			"Total number of threads.",
+			nil,
+			nil,
+		),
+		flushEnabled: prometheus.NewDesc(
+			prometheus.BuildFQName(Namespace, "", "flush_enabled"),
+			"Is flush enabled",
+			nil,
+			nil,
+		),
 	}
 }
 
@@ -558,6 +572,8 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.slabsChunksFreeEnd
 	ch <- e.slabsMemRequested
 	ch <- e.slabsCommands
+	ch <- e.threads
+	ch <- e.flushEnabled
 }
 
 // Collect fetches the statistics from the configured memcached server, and
@@ -639,6 +655,7 @@ func (e *Exporter) parseStats(ch chan<- prometheus.Metric, stats map[net.Addr]me
 			e.parseAndNewMetric(ch, e.time, prometheus.GaugeValue, s, "time"),
 			e.parseAndNewMetric(ch, e.commands, prometheus.CounterValue, s, "cas_badval", "cas", "badval"),
 			e.parseAndNewMetric(ch, e.commands, prometheus.CounterValue, s, "cmd_flush", "flush", "hit"),
+			e.parseAndNewMetric(ch, e.threads, prometheus.GaugeValue, s, "threads"),
 		)
 		if err != nil {
 			parseError = err
@@ -762,6 +779,9 @@ func (e *Exporter) parseStatsSettings(ch chan<- prometheus.Metric, statsSettings
 	var parseError error
 	for _, settings := range statsSettings {
 		if err := e.parseAndNewMetric(ch, e.maxConnections, prometheus.GaugeValue, settings, "maxconns"); err != nil {
+			parseError = err
+		}
+		if err := e.parseBoolAndNewMetric(ch, e.flushEnabled, prometheus.GaugeValue, settings, "flush_enabled"); err != nil {
 			parseError = err
 		}
 
